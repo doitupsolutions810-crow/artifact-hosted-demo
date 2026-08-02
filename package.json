@@ -1,0 +1,6 @@
+{
+  "name": "control12-official-binary-relay",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {"node": ">=20"}
+}
