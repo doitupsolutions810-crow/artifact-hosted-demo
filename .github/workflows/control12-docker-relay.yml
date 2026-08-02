@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   relay:
@@ -70,6 +71,7 @@ jobs:
           EOF
 
       - name: Upload relay artifact
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: control12-docker-floci-amd64
@@ -77,3 +79,22 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           compression-level: 1
+
+      - name: Report relay artifact
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                'CONTROL12 relay complete.',
+                `run_id=${context.runId}`,
+                `artifact_id=${process.env.ARTIFACT_ID}`,
+                `artifact_digest=${process.env.ARTIFACT_DIGEST}`
+              ].join('\n')
+            })
