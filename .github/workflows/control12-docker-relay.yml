@@ -1,9 +1,11 @@
 name: CONTROL12 Docker Relay
 
 on:
-  push:
+  pull_request:
     branches:
-      - control12-docker-relay-20260802
+      - main
+    paths:
+      - relay-trigger-20260802.txt
 
 permissions:
   contents: read
