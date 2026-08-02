@@ -1,0 +1,77 @@
+name: CONTROL12 Docker Relay
+
+on:
+  push:
+    branches:
+      - control12-docker-relay-20260802
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DOCKER_VERSION: 29.7.1
+      FLOCI_IMAGE: floci/floci:latest
+    steps:
+      - name: Download official Docker static archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p relay
+          curl --fail --location --retry 5 --retry-all-errors \
+            "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" \
+            -o "relay/docker-${DOCKER_VERSION}.tgz"
+          curl --fail --location --retry 5 --retry-all-errors \
+            "https://download.docker.com/linux/static/stable/x86_64/docker-rootless-extras-${DOCKER_VERSION}.tgz" \
+            -o "relay/docker-rootless-extras-${DOCKER_VERSION}.tgz"
+
+      - name: Validate Docker archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -tzf "relay/docker-${DOCKER_VERSION}.tgz" >/dev/null
+          tar -tzf "relay/docker-rootless-extras-${DOCKER_VERSION}.tgz" >/dev/null
+          mkdir -p verify/engine verify/rootless
+          tar -xzf "relay/docker-${DOCKER_VERSION}.tgz" -C verify/engine
+          tar -xzf "relay/docker-rootless-extras-${DOCKER_VERSION}.tgz" -C verify/rootless
+          verify/engine/docker/docker --version | tee relay/docker-version.txt
+          verify/engine/docker/dockerd --version | tee relay/dockerd-version.txt
+          verify/rootless/docker-rootless-extras/rootlesskit --version | tee relay/rootlesskit-version.txt
+          sha256sum relay/*.tgz > relay/SHA256SUMS
+
+      - name: Export exact Floci image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "${FLOCI_IMAGE}"
+          docker image inspect "${FLOCI_IMAGE}" --format '{{json .RepoDigests}}' | tee relay/floci-repo-digests.json
+          docker image inspect "${FLOCI_IMAGE}" --format '{{.Id}}' | tee relay/floci-image-id.txt
+          docker save "${FLOCI_IMAGE}" -o relay/floci-image.tar
+          sha256sum relay/floci-image.tar >> relay/SHA256SUMS
+
+      - name: Write relay provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > relay/PROVENANCE.txt <<EOF
+          purpose=CONTROL12 isolated Docker and Floci bootstrap
+          docker_source=https://download.docker.com/linux/static/stable/x86_64/
+          docker_version=${DOCKER_VERSION}
+          floci_source=${FLOCI_IMAGE}
+          github_repository=${GITHUB_REPOSITORY}
+          github_sha=${GITHUB_SHA}
+          github_run_id=${GITHUB_RUN_ID}
+          generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
+      - name: Upload relay artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: control12-docker-floci-amd64
+          path: relay/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 1
